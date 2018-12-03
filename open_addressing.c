@@ -67,7 +67,7 @@ struct hash_table *empty_table(unsigned int size, float rehash_factor)
     int bytes = t * no_cols * q / 8;
     table->T = malloc(bytes);
     table->T_end = table->T + bytes;
-    tabulation_sample((uint32_t*)table->T, 
+    tabulation_sample((uint32_t*)table->T,
                       (uint32_t*)table->T_end);
 
     table->rehash_factor = rehash_factor;
@@ -129,24 +129,22 @@ static void insert_key_internal(struct hash_table *table, uint32_t key)
         if (bin->key == key) {
             return; // nothing to be done
         }
-    }        
+    }
 }
 
 bool contains_key(struct hash_table *table, uint32_t key)
 {
-    //printf("contains, table->active == %u, table->used == %u\n", table->active, table->used);
-        
     table->operations_since_rehash++;
     if (table->operations_since_rehash > table->probe_limit) {
         rehash(table);
     }
 
     uint32_t hash_key = hash(key, table->T);
-    
+
     for (unsigned int i = 0; i < table->size; ++i) {
         unsigned int index = p(hash_key, i, table->size);
         struct bin *bin = & table->table[index];
-        if (bin->is_free) 
+        if (bin->is_free)
             return false;
         if (!bin->is_deleted && bin->key == key)
             return true;
@@ -183,7 +181,7 @@ void delete_key(struct hash_table *table, uint32_t key)
 static void resize(struct hash_table *table, unsigned int new_size)
 {
     // nothing good comes from tables of size 0
-    if (new_size == 0) return; 
+    if (new_size == 0) return;
     // remember the old bins until we have moved them.
     struct bin *old_bins = table->table;
     unsigned int old_size = table->size;
@@ -202,10 +200,10 @@ static void resize(struct hash_table *table, unsigned int new_size)
     }
 
     // Update hash function
-    tabulation_sample((uint32_t*)table->T, 
+    tabulation_sample((uint32_t*)table->T,
                       (uint32_t*)table->T_end);
 
-    // Then move the values from the old bins to the new, 
+    // Then move the values from the old bins to the new,
     // using the new hash function from the insertion function
     end = old_bins + old_size;
     for (struct bin *bin = old_bins; bin != end; ++bin) {
@@ -235,7 +233,7 @@ static void rehash(struct hash_table *table)
         bin->is_deleted = false;
     }
     // Update hash function
-    tabulation_sample((uint32_t*)table->T, 
+    tabulation_sample((uint32_t*)table->T,
                       (uint32_t*)table->T_end);
     table->operations_since_rehash = 0;
 
