@@ -235,8 +235,8 @@ void poly_sample(uint32_t *a, int k, uint32_t p)
 
 uint32_t poly_hash2(uint32_t x, uint32_t *a, uint32_t p)
 {
-    uint64_t ax1 = ((uint64_t)a[1] * (uint64_t)x) % p;
-    return (uint32_t) ((a[0] + ax1) % p);
+    uint64_t ax1 = ((uint64_t)a[1] * (uint64_t)x + a[0]) % p;
+    return (uint32_t) ax1;
 }
 
 uint32_t poly_hash5(uint32_t x, uint32_t *a, uint32_t p)
@@ -268,8 +268,8 @@ uint64_t mod_Mersenne(uint64_t x, uint8_t s)
 
 uint32_t poly_hash2_Mersenne(uint32_t x, uint32_t *a, uint8_t s)
 {
-    uint64_t ax1 = mod_Mersenne((uint64_t)a[1] * (uint64_t)x, s);
-    uint32_t y = (uint32_t) mod_Mersenne(a[0] + ax1, s);
+    uint64_t ax1 = mod_Mersenne((uint64_t)a[1] * (uint64_t)x + a[0], s);
+    uint32_t y = (uint32_t) ax1;
     return y;
 }
 
