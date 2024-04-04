@@ -3,12 +3,13 @@
 #define OPEN_ADDRESSING_H
 
 #include <stdbool.h>
+#include <stdint.h>
 
 struct bin {
   int in_probe : 1; // The bin is part of a sequence of used bins
   int is_empty : 1; // The bin does not contain a value (but might still be in
                     // a probe sequence)
-  unsigned int key;
+  unsigned int user_key;
 };
 
 struct hash_table {
@@ -18,7 +19,7 @@ struct hash_table {
   unsigned int active;
   // table used to parameterise the family of hash
   // functions
-  char *hash_func_index;
+  uint8_t *hash_func_index;
   // counter to check if it is time to rehash
   unsigned int ops_since_rehash;
 };
@@ -26,9 +27,9 @@ struct hash_table {
 struct hash_table *new_table(void);
 void delete_table(struct hash_table *table);
 
-void insert_key(struct hash_table *table, unsigned int key);
-bool contains_key(struct hash_table *table, unsigned int key);
-void delete_key(struct hash_table *table, unsigned int key);
+void insert_key(struct hash_table *table, unsigned int user_key);
+bool contains_key(struct hash_table *table, unsigned int user_key);
+void delete_key(struct hash_table *table, unsigned int user_key);
 
 // For debugging
 void print_table(struct hash_table *table);

@@ -7,20 +7,14 @@
 
 #define MIN_SIZE 8
 
-const int hash_func_table_size = 256;
-
-void tabulation_sample(void *index) {
-  uint32_t *start = index;
-  uint32_t *end = start + hash_func_table_size / sizeof(uint32_t);
-  while (start != end)
-    *(start++) = rand();
-}
+const int hash_func_table_size = 512;
 
 // tabulation hashing, r=4, q=32
 uint32_t hash(uint32_t x, uint8_t *T) {
+  const int q = 32;
   const int r = 4;
   const uint32_t no_cols = 1 << r;
-  const uint32_t mask = (1 << r) - 1;
+  const uint32_t mask = no_cols - 1;
 
   // clang-format off
   uint32_t *T_ = (uint32_t *)T;
@@ -37,6 +31,13 @@ uint32_t hash(uint32_t x, uint8_t *T) {
   return y;
 }
 
+void tabulation_sample(void *index) {
+  uint32_t *start = index;
+  uint32_t *end = start + hash_func_table_size / sizeof(uint32_t);
+  while (start != end)
+    *(start++) = rand();
+}
+
 unsigned int static p(unsigned int k, unsigned int i, unsigned int m) {
   return (k + i) & (m - 1);
 }
@@ -49,7 +50,10 @@ static void init_table(struct hash_table *table, unsigned int size,
                                .size = size,
                                .used = 0,
                                .active = 0.,
+                               .hash_func_index = table->hash_func_index,
                                .ops_since_rehash = 0};
+  // Initialise the hash table with a new function from the hash family
+  tabulation_sample(table->hash_func_index);
 
   // Initialize bins
   struct bin empty_bin = {.in_probe = false, .is_empty = true};
@@ -60,12 +64,9 @@ static void init_table(struct hash_table *table, unsigned int size,
   // Copy the old bins to the new table
   for (struct bin *bin = begin; bin != end; bin++) {
     if (!bin->is_empty) {
-      insert_key(table, bin->key);
+      insert_key(table, bin->user_key);
     }
   }
-
-  table->hash_func_index = malloc(hash_func_table_size);
-  tabulation_sample(table->hash_func_index);
 }
 
 static void resize(struct hash_table *table, unsigned int new_size) {
@@ -91,6 +92,7 @@ static void rehash(struct hash_table *table) {
 
 struct hash_table *new_table() {
   struct hash_table *table = malloc(sizeof *table);
+  table->hash_func_index = malloc(hash_func_table_size);
   init_table(table, MIN_SIZE, NULL, NULL);
   return table;
 }
@@ -102,10 +104,11 @@ void delete_table(struct hash_table *table) {
 }
 
 // Find the bin containing key, or the first bin past the end of its probe
-struct bin *find_key(struct hash_table *table, unsigned int key) {
+struct bin *find_key(struct hash_table *table, unsigned int user_key,
+                     uint32_t hash_key) {
   for (unsigned int i = 0; i < table->size; i++) {
-    struct bin *bin = table->bins + p(key, i, table->size);
-    if (bin->key == key || !bin->in_probe)
+    struct bin *bin = table->bins + p(hash_key, i, table->size);
+    if (bin->user_key == user_key || !bin->in_probe)
       return bin;
   }
   // The table is full. This should not happen!
@@ -113,9 +116,9 @@ struct bin *find_key(struct hash_table *table, unsigned int key) {
 }
 
 // Find the first empty bin in its probe.
-struct bin *find_empty(struct hash_table *table, unsigned int key) {
+struct bin *find_empty(struct hash_table *table, uint32_t hash_key) {
   for (unsigned int i = 0; i < table->size; i++) {
-    struct bin *bin = table->bins + p(key, i, table->size);
+    struct bin *bin = table->bins + p(hash_key, i, table->size);
     if (bin->is_empty)
       return bin;
   }
@@ -123,34 +126,44 @@ struct bin *find_empty(struct hash_table *table, unsigned int key) {
   assert(false);
 }
 
-void insert_key(struct hash_table *table, unsigned int key) {
-  if (!contains_key(table, key)) {
-    struct bin *key_bin = find_empty(table, key);
+void insert_key(struct hash_table *table, unsigned int user_key) {
+  if (table->ops_since_rehash++ > table->size)
+    rehash(table);
+
+  uint32_t hash_key = hash(user_key, table->hash_func_index);
+  struct bin *bin = find_key(table, user_key, hash_key);
+
+  if (bin->user_key != user_key || bin->is_empty) {
+    struct bin *key_bin = find_empty(table, hash_key);
 
     table->active++;
     if (!key_bin->in_probe)
       table->used++; // We are using a new bin
 
-    *key_bin = (struct bin){.in_probe = true, .is_empty = false, .key = key};
+    *key_bin =
+        (struct bin){.in_probe = true, .is_empty = false, .user_key = user_key};
 
     if (table->used > table->size / 2)
       resize(table, table->size * 2);
-    if (table->ops_since_rehash++ > table->size)
-      rehash(table);
   }
 }
 
-bool contains_key(struct hash_table *table, unsigned int key) {
+bool contains_key(struct hash_table *table, unsigned int user_key) {
   if (table->ops_since_rehash++ > table->size)
     rehash(table);
 
-  struct bin *bin = find_key(table, key);
-  return bin->key == key && !bin->is_empty;
+  uint32_t hash_key = hash(user_key, table->hash_func_index);
+  struct bin *bin = find_key(table, user_key, hash_key);
+  return bin->user_key == user_key && !bin->is_empty;
 }
 
-void delete_key(struct hash_table *table, unsigned int key) {
-  struct bin *bin = find_key(table, key);
-  if (bin->key != key)
+void delete_key(struct hash_table *table, unsigned int user_key) {
+  if (table->ops_since_rehash++ > table->size)
+    rehash(table);
+
+  uint32_t hash_key = hash(user_key, table->hash_func_index);
+  struct bin *bin = find_key(table, user_key, hash_key);
+  if (bin->user_key != user_key)
     return; // Nothing more to do
 
   bin->is_empty = true; // Delete the bin
@@ -158,8 +171,6 @@ void delete_key(struct hash_table *table, unsigned int key) {
 
   if (table->active < table->size / 8 && table->size > MIN_SIZE)
     resize(table, table->size / 2);
-  if (table->ops_since_rehash++ > table->size)
-    rehash(table);
 }
 
 void print_table(struct hash_table *table) {
@@ -169,7 +180,7 @@ void print_table(struct hash_table *table) {
     }
     struct bin *bin = table->bins + i;
     if (bin->in_probe && !bin->is_empty) {
-      printf("[%u]", bin->key);
+      printf("[%u]", bin->user_key);
     } else if (bin->in_probe && bin->is_empty) {
       printf("[*]");
     } else {
