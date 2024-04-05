@@ -2,41 +2,38 @@
 #include "open_addressing.h"
 
 #include <assert.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 
 #define MIN_SIZE 8
 
-const int hash_func_table_size = 512;
-
-// tabulation hashing, r=4, q=32
-uint32_t hash(uint32_t x, uint8_t *T) {
-  const int q = 32;
-  const int r = 4;
-  const uint32_t no_cols = 1 << r;
-  const uint32_t mask = no_cols - 1;
-
-  // clang-format off
-  uint32_t *T_ = (uint32_t *)T;
-  uint32_t y = T_[0 * no_cols + (x & mask)];  x >>= r;
-  y ^= T_[1 * no_cols + (x & mask)];          x >>= r;
-  y ^= T_[2 * no_cols + (x & mask)];          x >>= r;
-  y ^= T_[3 * no_cols + (x & mask)];          x >>= r;
-  y ^= T_[4 * no_cols + (x & mask)];          x >>= r;
-  y ^= T_[5 * no_cols + (x & mask)];          x >>= r;
-  y ^= T_[6 * no_cols + (x & mask)];          x >>= r;
-  y ^= T_[7 * no_cols + (x & mask)];
-  // clang-format on
-
-  return y;
-}
-
-void tabulation_sample(void *index) {
-  uint32_t *start = index;
-  uint32_t *end = start + hash_func_table_size / sizeof(uint32_t);
+void tabulation_sample(hash_func f) {
+  uint32_t *start = f;
+  uint32_t *end = start + HASH_FUNC_WORDS;
   while (start != end)
     *(start++) = rand();
 }
+
+// clang-format off
+// tabulation hashing, r=4, q=32
+uint32_t hash(uint32_t x, hash_func f) {
+  const uint32_t no_cols = 1 << R;
+  const uint32_t mask = no_cols - 1;
+
+  uint32_t y = 0;
+  y ^= f[0 * no_cols + (x & mask)];  x >>= R;
+  y ^= f[1 * no_cols + (x & mask)];  x >>= R;
+  y ^= f[2 * no_cols + (x & mask)];  x >>= R;
+  y ^= f[3 * no_cols + (x & mask)];  x >>= R;
+  y ^= f[4 * no_cols + (x & mask)];  x >>= R;
+  y ^= f[5 * no_cols + (x & mask)];  x >>= R;
+  y ^= f[6 * no_cols + (x & mask)];  x >>= R;
+  y ^= f[7 * no_cols + (x & mask)];
+
+  return y;
+}
+// clang-format on
 
 unsigned int static p(unsigned int k, unsigned int i, unsigned int m) {
   return (k + i) & (m - 1);
@@ -46,14 +43,14 @@ static void init_table(struct hash_table *table, unsigned int size,
                        struct bin *begin, struct bin *end) {
   // Initialize table members
   struct bin *bins = malloc(size * sizeof *bins);
-  *table = (struct hash_table){.bins = bins,
-                               .size = size,
-                               .used = 0,
-                               .active = 0.,
-                               .hash_func_index = table->hash_func_index,
-                               .ops_since_rehash = 0};
+  table->bins = bins;
+  table->size = size;
+  table->used = 0;
+  table->active = 0;
+  table->ops_since_rehash = 0;
+
   // Initialise the hash table with a new function from the hash family
-  tabulation_sample(table->hash_func_index);
+  tabulation_sample(table->hash_func);
 
   // Initialize bins
   struct bin empty_bin = {.in_probe = false, .is_empty = true};
@@ -75,7 +72,7 @@ static void resize(struct hash_table *table, unsigned int new_size) {
              *old_bins_end = old_bins_begin + table->size;
 
   // Resample hash function if we are resizing...
-  tabulation_sample(table->hash_func_index);
+  tabulation_sample(table->hash_func);
   table->ops_since_rehash = 0;
 
   // Update table and copy the old active bins to it.
@@ -92,14 +89,12 @@ static void rehash(struct hash_table *table) {
 
 struct hash_table *new_table() {
   struct hash_table *table = malloc(sizeof *table);
-  table->hash_func_index = malloc(hash_func_table_size);
   init_table(table, MIN_SIZE, NULL, NULL);
   return table;
 }
 
 void delete_table(struct hash_table *table) {
   free(table->bins);
-  free(table->hash_func_index);
   free(table);
 }
 
@@ -130,7 +125,7 @@ void insert_key(struct hash_table *table, unsigned int user_key) {
   if (table->ops_since_rehash++ > table->size)
     rehash(table);
 
-  uint32_t hash_key = hash(user_key, table->hash_func_index);
+  uint32_t hash_key = hash(user_key, table->hash_func);
   struct bin *bin = find_key(table, user_key, hash_key);
 
   if (bin->user_key != user_key || bin->is_empty) {
@@ -152,7 +147,7 @@ bool contains_key(struct hash_table *table, unsigned int user_key) {
   if (table->ops_since_rehash++ > table->size)
     rehash(table);
 
-  uint32_t hash_key = hash(user_key, table->hash_func_index);
+  uint32_t hash_key = hash(user_key, table->hash_func);
   struct bin *bin = find_key(table, user_key, hash_key);
   return bin->user_key == user_key && !bin->is_empty;
 }
@@ -161,7 +156,7 @@ void delete_key(struct hash_table *table, unsigned int user_key) {
   if (table->ops_since_rehash++ > table->size)
     rehash(table);
 
-  uint32_t hash_key = hash(user_key, table->hash_func_index);
+  uint32_t hash_key = hash(user_key, table->hash_func);
   struct bin *bin = find_key(table, user_key, hash_key);
   if (bin->user_key != user_key)
     return; // Nothing more to do

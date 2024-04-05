@@ -5,11 +5,17 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#define R 4
+#define Q 32
+#define HASH_FUNC_WORDS (Q * (1 << R) / sizeof(uint32_t))
+
+typedef uint32_t hash_func[HASH_FUNC_WORDS];
+
 struct bin {
-  int in_probe : 1; // The bin is part of a sequence of used bins
+  unsigned int user_key; // User (not hashed) key
+  int in_probe : 1;      // The bin is part of a sequence of used bins
   int is_empty : 1; // The bin does not contain a value (but might still be in
                     // a probe sequence)
-  unsigned int user_key;
 };
 
 struct hash_table {
@@ -17,9 +23,9 @@ struct hash_table {
   unsigned int size;
   unsigned int used;
   unsigned int active;
-  // table used to parameterise the family of hash
-  // functions
-  uint8_t *hash_func_index;
+
+  // sampled hash function
+  hash_func hash_func;
   // counter to check if it is time to rehash
   unsigned int ops_since_rehash;
 };
