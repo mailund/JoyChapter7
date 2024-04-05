@@ -8,6 +8,7 @@
 
 #define MIN_SIZE 8
 
+// Sample a new function and place it in f
 void tabulation_sample(hash_func f) {
   uint32_t *start = f;
   uint32_t *end = start + HASH_FUNC_WORDS;
@@ -42,8 +43,7 @@ unsigned int static p(unsigned int k, unsigned int i, unsigned int m) {
 static void init_table(struct hash_table *table, unsigned int size,
                        struct bin *begin, struct bin *end) {
   // Initialize table members
-  struct bin *bins = malloc(size * sizeof *bins);
-  table->bins = bins;
+  table->bins = malloc(size * sizeof *table->bins);
   table->size = size;
   table->used = 0;
   table->active = 0;
@@ -70,10 +70,6 @@ static void resize(struct hash_table *table, unsigned int new_size) {
   // remember the old bins until we have moved them.
   struct bin *old_bins_begin = table->bins,
              *old_bins_end = old_bins_begin + table->size;
-
-  // Resample hash function if we are resizing...
-  tabulation_sample(table->hash_func);
-  table->ops_since_rehash = 0;
 
   // Update table and copy the old active bins to it.
   init_table(table, new_size, old_bins_begin, old_bins_end);
